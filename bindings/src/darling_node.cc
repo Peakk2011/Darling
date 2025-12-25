@@ -33,10 +33,10 @@ Napi::Value SetOnCloseCallback(const Napi::CallbackInfo& info) {
 
     tsfn_on_close = ThreadSafeFunction::New(
         env,
-        info[0].As<Function>(), // JS function to call
-        "DarlingOnClose",      // Resource name
-        0,                     // Max queue size (0 = unlimited)
-        1                      // Initial thread count
+        info[0].As<Function>(),     // JS function to call
+        "DarlingOnClose",           // Resource name
+        0,                          // Max queue size (0 = unlimited)
+        1                           // Initial thread count
     );
 
     // Register our C-function intermediary.
@@ -60,8 +60,12 @@ Napi::Value CreateDarlingWindow(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint32_t w = info[0].As<Napi::Number>().Uint32Value();
     uint32_t h = info[1].As<Napi::Number>().Uint32Value();
+    uintptr_t parent_hwnd = 0;
+    if (info.Length() >= 3) {
+        parent_hwnd = (uintptr_t)value_to_u64(info[2]);
+    }
 
-    DarlingWindow* win = darling_create_window(w, h);
+    DarlingWindow* win = darling_create_window(w, h, parent_hwnd);
     return Napi::External<DarlingWindow>::New(env, win);
 }
 
@@ -149,6 +153,21 @@ Napi::Value ShowWindowWrappedHWND(const Napi::CallbackInfo& info) {
 #endif
 }
 
+Napi::Value PaintFrameWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!info[0].IsBuffer()) {
+        Napi::TypeError::New(env, "Expected a Buffer for the frame data").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    auto buffer = info[0].As<Napi::Buffer<unsigned char>>();
+    uint32_t w = info[1].As<Napi::Number>().Uint32Value();
+    uint32_t h = info[2].As<Napi::Number>().Uint32Value();
+
+    darling_paint_frame(buffer.Data(), w, h);
+
+    return env.Undefined();
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("createWindow", Napi::Function::New(env, CreateDarlingWindow));
     exports.Set("destroyWindow", Napi::Function::New(env, DestroyDarlingWindow));
@@ -156,6 +175,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("showDarlingWindow", Napi::Function::New(env, ShowWindowWrapped));
     exports.Set("pollEvents", Napi::Function::New(env, PollEvents));
     exports.Set("getHWND", Napi::Function::New(env, GetHWND));
+    exports.Set("paintFrame", Napi::Function::New(env, PaintFrameWrapped));
     exports.Set("setParent", Napi::Function::New(env, SetParentWrapped));
     exports.Set("setWindowStyles", Napi::Function::New(env, SetWindowStylesWrapped));
     exports.Set("setWindowPos", Napi::Function::New(env, SetWindowPosWrapped));

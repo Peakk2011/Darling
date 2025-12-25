@@ -1,8 +1,18 @@
-import { createWindow, showWindow, pollEvents } from '../js/index.mjs'
+import { app } from 'electron';
+import { CreateWindow } from '../js/darling-electron-wrapper.mjs';
 
-const win = createWindow(800, 600)
-showWindow(win)
+app.whenReady().then(() => {
+    CreateWindow({
+        width: 640,
+        height: 480,
+        url: 'https://mint-teams.web.app/FascinateNotes/src/',
+        frameRate: 60,
+        onClose: () => {
+            console.log('Darling Electron window closed.');
+        }
+    })
+});
 
-setInterval(() => {
-    pollEvents()
-}, 16)
+app.on('window-all-closed', () => {
+    app.quit();
+});
