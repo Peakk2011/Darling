@@ -12,11 +12,8 @@
 
 using namespace Napi;
 
-// Thread-safe function to call from the message loop thread back into Node's event loop.
 static ThreadSafeFunction tsfn_on_close;
 
-// This is the C-style function that will be passed to the darling library.
-// It gets called on the message loop thread.
 static void c_callback_on_close() {
     if (tsfn_on_close) {
         tsfn_on_close.BlockingCall();
@@ -86,6 +83,30 @@ Napi::Value ShowWindowWrapped(const Napi::CallbackInfo& info) {
     return info.Env().Undefined();
 }
 
+Napi::Value SetChildWindowWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint64_t child = value_to_u64(info[1]);
+    darling_set_child_hwnd(win, (uintptr_t)child);
+    return env.Undefined();
+}
+
+Napi::Value SetWindowTitleWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    std::u16string title = info[1].As<Napi::String>().Utf16Value();
+    darling_set_window_title(win, (const wchar_t*)title.c_str());
+    return env.Undefined();
+}
+
+Napi::Value SetWindowIconVisibleWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    bool visible = info[1].As<Napi::Boolean>().Value();
+    darling_set_window_icon_visible(win, visible ? 1 : 0);
+    return env.Undefined();
+}
+
 Napi::Value PollEvents(const Napi::CallbackInfo& info) {
     darling_poll_events();
     return info.Env().Undefined();
@@ -123,6 +144,54 @@ Napi::Value SetWindowStylesWrapped(const Napi::CallbackInfo& info) {
 #else
     return Napi::Boolean::New(env, false);
 #endif
+}
+
+Napi::Value SetWindowExStylesWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    uint64_t hwnd_v = value_to_u64(info[0]);
+    uint64_t add = value_to_u64(info[1]);
+    uint64_t remove = value_to_u64(info[2]);
+#ifdef _WIN32
+    HWND hwnd = (HWND)(uintptr_t)hwnd_v;
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    
+    style = (style | (LONG_PTR)add) & ~((LONG_PTR)remove);
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style);
+    return Napi::Boolean::New(env, true);
+#else
+    return Napi::Boolean::New(env, false);
+#endif
+}
+
+Napi::Value IsDarkModeWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    int isDark = darling_is_dark_mode();
+    return Napi::Boolean::New(env, isDark ? true : false);
+}
+
+Napi::Value SetDarkModeWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    bool enable = info[1].As<Napi::Boolean>().Value();
+    darling_set_dark_mode(win, enable ? 1 : 0);
+    return env.Undefined();
+}
+
+Napi::Value SetAutoDarkModeWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    darling_set_auto_dark_mode(win);
+    return env.Undefined();
+}
+
+Napi::Value SetTitlebarColorsWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint32_t bg = info[1].As<Napi::Number>().Uint32Value();
+    uint32_t text = info[2].As<Napi::Number>().Uint32Value();
+    darling_set_titlebar_colors(win, bg, text);
+    return env.Undefined();
 }
 
 Napi::Value SetWindowPosWrapped(const Napi::CallbackInfo& info) {
@@ -173,13 +242,21 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("destroyWindow", Napi::Function::New(env, DestroyDarlingWindow));
     exports.Set("onCloseRequested", Napi::Function::New(env, SetOnCloseCallback));
     exports.Set("showDarlingWindow", Napi::Function::New(env, ShowWindowWrapped));
+    exports.Set("setChildWindow", Napi::Function::New(env, SetChildWindowWrapped));
+    exports.Set("setWindowTitle", Napi::Function::New(env, SetWindowTitleWrapped));
+    exports.Set("setWindowIconVisible", Napi::Function::New(env, SetWindowIconVisibleWrapped));
     exports.Set("pollEvents", Napi::Function::New(env, PollEvents));
     exports.Set("getHWND", Napi::Function::New(env, GetHWND));
     exports.Set("paintFrame", Napi::Function::New(env, PaintFrameWrapped));
     exports.Set("setParent", Napi::Function::New(env, SetParentWrapped));
     exports.Set("setWindowStyles", Napi::Function::New(env, SetWindowStylesWrapped));
+    exports.Set("setWindowExStyles", Napi::Function::New(env, SetWindowExStylesWrapped));
     exports.Set("setWindowPos", Napi::Function::New(env, SetWindowPosWrapped));
     exports.Set("showWindow", Napi::Function::New(env, ShowWindowWrappedHWND));
+    exports.Set("isDarkMode", Napi::Function::New(env, IsDarkModeWrapped));
+    exports.Set("setDarkMode", Napi::Function::New(env, SetDarkModeWrapped));
+    exports.Set("setAutoDarkMode", Napi::Function::New(env, SetAutoDarkModeWrapped));
+    exports.Set("setTitlebarColors", Napi::Function::New(env, SetTitlebarColorsWrapped));
     return exports;
 }
 

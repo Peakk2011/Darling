@@ -1,4 +1,9 @@
 {
+  "name": "darling",
+  "type": "module",
+  "exports": {
+    ".": "./js/index.mjs"
+  },
   "devDependencies": {
     "electron": "^39.2.7"
   }

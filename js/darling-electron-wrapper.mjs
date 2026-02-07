@@ -1,112 +1,234 @@
-import { app, BrowserWindow } from 'electron'
-import { createRequire } from 'module'
-const require = createRequire(import.meta.url)
-const darling = require('./darling-bridge.cjs')
+import { app, BrowserWindow } from 'electron';
+import { createRequire } from 'module';
 
-// This module encapsulates the complexity of setting up a Darling native window
-// with an offscreen Electron renderer. It provides a simplified API.
+const require = createRequire(import.meta.url);
+const darling = require('./darling-bridge.cjs');
 
-export function CreateWindow(options) {
+let windowAllClosedHandlerAttached = false
+
+export const CreateWindow = async (options) => {
+    if (!windowAllClosedHandlerAttached) {
+        windowAllClosedHandlerAttached = true;
+
+        app.on('window-all-closed', () => {
+            app.quit();
+        });
+    }
+
+    if (!app.isReady()) {
+        await app.whenReady();
+    }
+
     const {
         width = 800,
         height = 600,
         url = 'about:blank',
         onClose = () => app.quit(),
-        frameRate = 60
+        frameRate = 60,
+        title = '',
+        showIcon = true,
+        theme = null,
+        nativeStylesAdd = 0,
+        nativeStylesRemove = 0,
+        nativeExStylesAdd = 0,
+        nativeExStylesRemove = 0
     } = options || {};
 
     let darlingWindowHandle = null;
     let pollInterval = null;
 
-    // 1. Create the native host window.
-    const dw = darling.createWindow(width, height)
-    darling.showDarlingWindow(dw)
+    // Create the native host window.
+    const dw = darling.createWindow(width, height);
+
+    darling.showDarlingWindow(dw);
     darlingWindowHandle = dw; // Store for cleanup
 
-    // 2. Create the offscreen Electron window.
+    try {
+        darling.setWindowTitle(dw, title);
+    } catch (e) {
+        console.warn('Failed to set window title:', e);
+    }
+
+    try {
+        darling.setWindowIconVisible(dw, !!showIcon)
+    } catch (e) {
+        console.warn('Failed to set window icon visibility:', e);
+    }
+
+    if (theme) {
+        const titlebarTheme = typeof theme === 'string' ? theme : theme.titlebar;
+        
+        if (titlebarTheme === 'dark' || titlebarTheme === 'light') {
+            try {
+                darling.setDarkMode(dw, titlebarTheme === 'dark');
+            } catch (e) {
+                console.warn('Failed to set titlebar theme:', e);
+            }
+        }
+    }
+
+    // Create the Electron window (embedded as child).
     const bw = new BrowserWindow({
         width: width,
         height: height,
-        show: false, // Never show this window.
+        show: false,
+        frame: false,
         webPreferences: {
-            offscreen: true, // Crucial for this approach!
             nodeIntegration: false,
             contextIsolation: true,
         }
-    })
+    });
 
-    // 3. Listen for the 'paint' event to get new frames.
-    bw.webContents.on('paint', (event, dirty, image) => {
-        const size = image.getSize()
-        if (size.width === 0 || size.height === 0) {
-            return
-        }
-        // Get the raw BGRA bitmap data.
-        const buffer = image.toBitmap()
-        
-        // Send the frame to the native window to be painted.
+    // Embed the Electron window into the native Darling window.
+    const buf = bw.getNativeWindowHandle();
+
+    const eleHWND = BigInt.asUintN(
+        64,
+        buf.readBigUInt64LE(0)
+    );
+
+    const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
+
+    const WS_CHILD = 0x40000000;
+    const WS_POPUP = 0x80000000;
+    const WS_OVERLAPPEDWINDOW = 0x00CF0000;
+    const SWP_NOZORDER = 0x0004;
+    const SWP_FRAMECHANGED = 0x0020;
+
+    try {
+        darling.setParent(
+            eleHWND,
+            darlingHWND
+        );
+
+        darling.setWindowStyles(
+            eleHWND,
+            WS_CHILD,
+            WS_POPUP | WS_OVERLAPPEDWINDOW
+        );
+
+        darling.setWindowPos(
+            eleHWND,
+            0,
+            0,
+            width,
+            height,
+            SWP_NOZORDER | SWP_FRAMECHANGED
+        );
+
+        darling.setChildWindow(dw, eleHWND);
+    } catch (e) {
+        console.error('Failed to embed Electron window:', e);
+    }
+
+    // Apply native window style overrides if provided.
+    if (nativeStylesAdd || nativeStylesRemove) {
         try {
-            darling.paintFrame(buffer, size.width, size.height)
+            darling.setWindowStyles(
+                darlingHWND,
+                nativeStylesAdd,
+                nativeStylesRemove
+            );
+
+            darling.setWindowPos(
+                darlingHWND,
+                0,
+                0,
+                width,
+                height,
+                SWP_NOZORDER | SWP_FRAMECHANGED
+            );
         } catch (e) {
-            console.error('Failed to paint frame:', e)
+            console.warn('Failed to apply native styles:', e);
         }
-    })
+    }
+    if (nativeExStylesAdd || nativeExStylesRemove) {
+        try {
+            darling.setWindowExStyles(
+                darlingHWND,
+                nativeExStylesAdd,
+                nativeExStylesRemove
+            );
 
-    // Set a desired frame rate.
-    bw.webContents.setFrameRate(frameRate)
+            darling.setWindowPos(
+                darlingHWND,
+                0,
+                0,
+                width,
+                height,
+                SWP_NOZORDER | SWP_FRAMECHANGED
+            );
+        } catch (e) {
+            console.warn('Failed to apply native ex-styles:', e);
+        }
+    }
 
-    // 4. Load content into the offscreen window.
+    // Load content into the Electron window.
     bw.loadURL(url)
+        .then(() => bw.show())
+        .catch((e) => console.error('Failed to load URL:', e));
 
-    // 5. Set up a message loop poller.
-    // This is crucial to keep the native window responsive and processing
-    // WM_PAINT and WM_CLOSE messages.
+    if (theme && typeof theme === 'object' && theme.content) {
+        const contentTheme = theme.content;
+        if (contentTheme === 'dark' || contentTheme === 'light') {
+            bw.webContents.on('did-finish-load', () => {
+                const scheme = contentTheme === 'dark' ? 'dark' : 'light';
+                bw.webContents.insertCSS(`:root{color-scheme:${scheme};}`);
+            });
+        }
+    }
+
+    /*
+        Set up a message loop poller.
+        This is crucial to keep the native window responsive and processing
+        WM_PAINT and WM_CLOSE messages.
+    */
+
     pollInterval = setInterval(() => {
         try {
-            darling.pollEvents()
+            darling.pollEvents();
         } catch (e) {
-            console.error('Failed polling events:', e)
-            if (pollInterval) clearInterval(pollInterval)
-            if (onClose) onClose(); // Trigger close if polling fails
-        }
-    }, 1000 / frameRate)
+            console.error('Failed polling events:', e);
 
-    // 6. Set up cleanup logic.
+            if (pollInterval) clearInterval(pollInterval);
+            if (onClose) onClose();
+        }
+    }, 1000 / frameRate);
+
+    // Set up cleanup logic.
     const cleanup = () => {
-        console.log('Cleaning up Darling Electron Window...')
+        console.log('Cleaning up Darling Electron Window...');
+
         if (pollInterval) {
-            clearInterval(pollInterval)
+            clearInterval(pollInterval);
             pollInterval = null;
         }
+
         if (darlingWindowHandle) {
             try {
-                darling.destroyWindow(darlingWindowHandle)
+                darling.destroyWindow(darlingWindowHandle);
                 darlingWindowHandle = null;
             } catch (e) {
-                console.error('Failed to destroy darling window:', e)
+                console.error('Failed to destroy darling window:', e);
             }
         }
-        // Destroy the offscreen BrowserWindow as well
+
+        // Destroy the embedded BrowserWindow as well
         if (!bw.isDestroyed()) {
             bw.destroy();
         }
     }
-    
+
     // Ensure cleanup happens when Electron quits.
-    app.on('will-quit', cleanup)
+    app.on('will-quit', cleanup);
 
     // Also handle the native window being closed by the user (e.g., Alt+F4).
     darling.onCloseRequested(() => {
-        console.log('Darling window close requested.')
-        if (onClose) onClose(); // Use the provided callback
-    })
+        console.log('Darling window close requested.');
 
-    // Return the offscreen BrowserWindow instance in case it's needed for further control
+        cleanup();
+        if (onClose) onClose(); // Use the provided callback
+    });
+
     return bw;
 }
-
-// NOTE: This implementation only handles rendering. It does NOT forward
-// input (mouse, keyboard) from the Darling window to the Electron window.
-// That is a much more complex task requiring more native code to capture
-// window messages (e.g., WM_MOUSEMOVE, WM_KEYDOWN) and forward them to JS
-// using `webContents.sendInputEvent()`.

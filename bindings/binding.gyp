@@ -9,7 +9,8 @@
             ],
             "include_dirs": [
                 "../core/include",
-                "<!@(node -p \"require('node-addon-api').include\")"
+                "<!@(node -p \"require('node-addon-api').include\")",
+                "../core/include"
             ],
             "dependencies": [
                 "<!(node -p \"require('node-addon-api').gyp\")"

@@ -17,30 +17,89 @@ extern "C" {
 
 typedef struct DarlingWindow DarlingWindow;
 
+// Window Management
+
 // Create a Darling native window. If `parent_hwnd` is non-zero on Windows,
 // the window will be created with `WS_CHILD | WS_VISIBLE` and attached to the
-// specified parent. Pass 0 to create a top-level window (frameless by default).
+// specified parent. Pass 0 to create a top-level window (with title bar by default).
 DARLING_API DarlingWindow* darling_create_window(
     uint32_t width,
     uint32_t height,
     uintptr_t parent_hwnd
 );
 
+// Show a window
 DARLING_API void darling_show_window(DarlingWindow* win);
-DARLING_API void darling_poll_events(void);
+
+// Destroy a window and free its resources
 DARLING_API void darling_destroy_window(DarlingWindow* win);
-// Return the HWND of the main Darling window (0 if none).
+
+// Return the HWND of the main Darling window (0 if none)
 DARLING_API uintptr_t darling_get_main_hwnd(void);
 
-// Paints a BGRA bitmap onto the main window.
+// Window Properties
+
+// Associate a child HWND with a Darling window (used for resize parenting)
+DARLING_API void darling_set_child_hwnd(DarlingWindow* win, uintptr_t child_hwnd);
+
+// Set the title text for a Darling window
+DARLING_API void darling_set_window_title(DarlingWindow* win, const wchar_t* title);
+
+// Show or hide the title bar icon (uses default app icon when shown)
+DARLING_API void darling_set_window_icon_visible(DarlingWindow* win, int visible);
+
+// Theme Management
+
+// Check if system is in dark mode (1 = dark, 0 = light)
+DARLING_API int darling_is_dark_mode(void);
+
+// Manually set dark mode for a window (1 = dark, 0 = light)
+DARLING_API void darling_set_dark_mode(DarlingWindow* win, int enable);
+
+// Auto-detect and apply system theme to a window
+DARLING_API void darling_set_auto_dark_mode(DarlingWindow* win);
+
+// Set custom titlebar colors (Windows 11+)
+// Colors are in RGBA format: 0xRRGGBBAA (alpha ignored)
+// Example: 0x202020FF = dark gray, 0xFFFFFFFF = white
+DARLING_API void darling_set_titlebar_colors(
+    DarlingWindow* win,
+    uint32_t bg_color,
+    uint32_t text_color
+);
+
+// Rendering
+
+// Paint a BGRA bitmap onto the main window
 DARLING_API void darling_paint_frame(
     const unsigned char* bgra_data,
     uint32_t width,
     uint32_t height
 );
 
-// Sets a callback to be invoked when the main window receives WM_CLOSE.
+// Paint a BGRA bitmap onto a specific window
+DARLING_API void darling_paint_frame_window(
+    DarlingWindow* win,
+    const unsigned char* bgra_data,
+    uint32_t width,
+    uint32_t height
+);
+
+// Event Loop
+
+// Process all pending window messages
+DARLING_API void darling_poll_events(void);
+
+// Set a callback to be invoked when the main window receives WM_CLOSE
 DARLING_API void darling_set_close_callback(void (*callback)());
+
+// Initialization
+
+// Initialize global state (thread-safety, etc)
+DARLING_API void darling_init(void);
+
+// Clean up global state and unregister the window class
+DARLING_API void darling_cleanup(void);
 
 #ifdef __cplusplus
 }
