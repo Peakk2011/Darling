@@ -38,6 +38,8 @@ typedef struct DarlingWindow {
     BOOL inList;
     BOOL darkMode;
     HWND childHwnd;
+
+    HICON customIcon;
     
     struct DarlingWindow* prev;
     struct DarlingWindow* next;
@@ -79,6 +81,9 @@ void darling_update_main_on_remove(DarlingWindow* removed);
 // Window Procedure (window.c)
 LRESULT CALLBACK darling_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 BOOL darling_register_class(void);
+
+void darling_set_window_icon_visible(DarlingWindow* win, int visible);
+void darling_cleanup_window_icon(DarlingWindow* win);
 
 // Theme Application (window.c)
 void darling_apply_dark_mode_internal(DarlingWindow* win, BOOL enable);

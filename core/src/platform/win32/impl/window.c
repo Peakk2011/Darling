@@ -315,6 +315,7 @@ void darling_destroy_window(DarlingWindow* win) {
         darling_update_main_on_remove(win);
     }
 
+    darling_cleanup_window_icon(win);
     darling_free_gdi(win);
     free(win);
 
@@ -338,46 +339,63 @@ void darling_set_window_icon_visible(DarlingWindow* win, int visible) {
         return;
     }
     
+    darling_lock();
+    
+    // ทำลาย icon เก่า
+    if (win->customIcon) {
+        DestroyIcon(win->customIcon);
+        win->customIcon = NULL;
+    }
+    
     HICON icon = NULL;
     
     if (visible) {
-        // Show normal icon
-        icon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+        // System icon
+        icon = (HICON)LoadImageW(
+            NULL,
+            MAKEINTRESOURCEW(IDI_APPLICATION),
+            IMAGE_ICON,
+            0, 0,
+            LR_DEFAULTSIZE | LR_SHARED
+        );
     } else {
-        // Create transparent icon 1x1 pixel
-        BYTE andMask[4] = {0xFF, 0xFF, 0xFF, 0xFF};  // All bits = 1 (transparent)
-        BYTE xorMask[4] = {0x00, 0x00, 0x00, 0x00};  // All bits = 0 (no color)
+        // Transparent icon 1x1
+        BYTE andMask[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+        BYTE xorMask[4] = {0x00, 0x00, 0x00, 0x00};
         
         icon = CreateIcon(
             GetModuleHandleW(NULL),
-            1,      // width
-            1,      // height
-            1,      // planes
-            1,      // bits per pixel
+            1, 1, 1, 1,
             andMask,
             xorMask
         );
+        
+        if (icon) {
+            win->customIcon = icon;
+        } else {
+            darling_log_last_error(L"CreateIcon");
+        }
     }
     
     if (icon) {
         SendMessageW(win->hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
         SendMessageW(win->hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
-        SetClassLongPtrW(win->hwnd, GCLP_HICON, (LONG_PTR)icon);
-        SetClassLongPtrW(win->hwnd, GCLP_HICONSM, (LONG_PTR)icon);
+        
+        SetWindowPos(
+            win->hwnd, NULL, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | 
+            SWP_NOACTIVATE | SWP_FRAMECHANGED
+        );
     }
     
-    // Force redraw
-    SetWindowPos(
-        win->hwnd,
-        NULL,
-        0,
-        0,
-        0,
-        0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
-    );
-    
-    RedrawWindow(win->hwnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+    darling_unlock();
+}
+
+void darling_cleanup_window_icon(DarlingWindow* win) {
+    if (win && win->customIcon) {
+        DestroyIcon(win->customIcon);
+        win->customIcon = NULL;
+    }
 }
 
 void darling_set_child_hwnd(DarlingWindow* win, uintptr_t child_hwnd) {
