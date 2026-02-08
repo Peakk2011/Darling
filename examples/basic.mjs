@@ -1,14 +1,37 @@
 import { CreateWindow } from 'darling';
 
-CreateWindow({
-    width: 800,
-    height: 600,
-    url: 'https://github.com/Peakk2011/',
-    frameRate: 60,
-    title: '',
-    showIcon: false,
+const darlingWindow = async () => {
+    // Create a window
+    const win = await CreateWindow({
+        width: 640,
+        height: 480,
+        url: 'https://github.com/Peakk2011/',
+        title: 'Peakk2011',
+        showIcon: false,
 
-    onClose: () => {
-        console.log('Darling Electron window closed.');
-    }
-})
+        onReady: () => {
+            console.log('Window ready!');
+        },
+
+        onClose: () => {
+            console.log('Window closed');
+        }
+    });
+
+    /*
+        When using a Control outside of CreateWindow, it won't appear
+        immediately when you open the window. Instead, it will appear
+        along with the web content you've configured. Therefore, it's
+        necessary when you want to make changes. You can use a Test
+        Control like this.
+    */
+
+    // Test controls
+    // win.setTitle('Peakk2011');
+}
+
+// Error handler
+darlingWindow().catch((error) => {
+    console.error('Error:', error);
+    process.exit(1);
+});

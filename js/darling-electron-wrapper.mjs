@@ -1,15 +1,321 @@
 import { app, BrowserWindow } from 'electron';
 import { createRequire } from 'module';
+import { EventEmitter } from 'events';
 
 const require = createRequire(import.meta.url);
 const darling = require('./darling-bridge.cjs');
 
-let windowAllClosedHandlerAttached = false
+let windowAllClosedHandlerAttached = false;
 
-export const CreateWindow = async (options) => {
+/**
+ * Darling Window Instance
+ * Wraps both the native Darling window and Electron BrowserWindow
+ */
+class DarlingWindowInstance extends EventEmitter {
+    constructor(darlingWindow, browserWindow, options) {
+        super();
+        
+        this.darlingWindow = darlingWindow;
+        this.browserWindow = browserWindow;
+        this.options = options;
+        this.closed = false;
+        this._pollInterval = null;
+        
+        this._setupEventForwarding();
+    }
+    
+    _setupEventForwarding() {
+        // Forward BrowserWindow events
+        this.browserWindow.on('closed', () => {
+            this.closed = true;
+            this.emit('closed');
+        });
+        
+        this.browserWindow.on('resize', () => {
+            const [width, height] = this.browserWindow.getSize();
+            this.emit('resize', width, height);
+        });
+        
+        this.browserWindow.on('move', () => {
+            const [x, y] = this.browserWindow.getPosition();
+            this.emit('move', x, y);
+        });
+        
+        this.browserWindow.on('focus', () => {
+            this.emit('focus');
+        });
+        
+        this.browserWindow.on('blur', () => {
+            this.emit('blur');
+        });
+        
+        this.browserWindow.webContents.on('did-finish-load', () => {
+            this.emit('ready');
+        });
+    }
+    
+    // Window control methods
+    close() {
+        if (this.closed) return;
+        
+        if (this._pollInterval) {
+            clearInterval(this._pollInterval);
+            this._pollInterval = null;
+        }
+        
+        try {
+            if (this.darlingWindow) {
+                darling.destroyWindow(this.darlingWindow);
+                this.darlingWindow = null;
+            }
+        } catch (e) {
+            console.error('Failed to destroy darling window:', e);
+        }
+        
+        if (!this.browserWindow.isDestroyed()) {
+            this.browserWindow.destroy();
+        }
+        
+        this.closed = true;
+        this.emit('close');
+    }
+    
+    focus() {
+        if (!this.closed) {
+            this.browserWindow.focus();
+        }
+    }
+    
+    blur() {
+        if (!this.closed) {
+            this.browserWindow.blur();
+        }
+    }
+    
+    resize(width, height) {
+        if (!this.closed) {
+            this.browserWindow.setSize(width, height);
+            
+            try {
+                const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
+                const SWP_NOZORDER = 0x0004;
+                const SWP_FRAMECHANGED = 0x0020;
+                
+                darling.setWindowPos(
+                    darlingHWND,
+                    0, 0,
+                    width, height,
+                    SWP_NOZORDER | SWP_FRAMECHANGED
+                );
+            } catch (e) {
+                console.error('Failed to resize darling window:', e);
+            }
+        }
+    }
+    
+    move(x, y) {
+        if (!this.closed) {
+            this.browserWindow.setPosition(x, y);
+        }
+    }
+    
+    center() {
+        if (!this.closed) {
+            this.browserWindow.center();
+        }
+    }
+    
+    setTitle(title) {
+        if (!this.closed) {
+            try {
+                darling.setWindowTitle(this.darlingWindow, title);
+            } catch (e) {
+                console.error('Failed to set title:', e);
+                throw e;
+            }
+        }
+    }
+    
+    setDarkMode(enabled) {
+        if (!this.closed) {
+            try {
+                darling.setDarkMode(this.darlingWindow, !!enabled);
+            } catch (e) {
+                console.error('Failed to set dark mode:', e);
+                throw e;
+            }
+        }
+    }
+
+    showWindow() {
+        if (!this.closed) {
+            try {
+                darling.showDarlingWindow(this.darlingWindow);
+            } catch (e) {
+                console.error('Failed to show darling window:', e);
+                throw e;
+            }
+        }
+    }
+
+    hideWindow() {
+        if (!this.closed) {
+            try {
+                darling.hideDarlingWindow(this.darlingWindow);
+            } catch (e) {
+                console.error('Failed to hide darling window:', e);
+                throw e;
+            }
+        }
+    }
+
+    focusWindow() {
+        if (!this.closed) {
+            try {
+                darling.focusDarlingWindow(this.darlingWindow);
+            } catch (e) {
+                console.error('Failed to focus darling window:', e);
+                throw e;
+            }
+        }
+    }
+
+    isVisible() {
+        if (this.closed) return false;
+        try {
+            return !!darling.isVisible(this.darlingWindow);
+        } catch (e) {
+            console.error('Failed to read window visibility:', e);
+            throw e;
+        }
+    }
+
+    isFocused() {
+        if (this.closed) return false;
+        try {
+            return !!darling.isFocused(this.darlingWindow);
+        } catch (e) {
+            console.error('Failed to read window focus state:', e);
+            throw e;
+        }
+    }
+
+    setWindowOpacity(opacity) {
+        if (!this.closed) {
+            try {
+                darling.setWindowOpacity(this.darlingWindow, opacity);
+            } catch (e) {
+                console.error('Failed to set window opacity:', e);
+                throw e;
+            }
+        }
+    }
+
+    setAlwaysOnTop(enable) {
+        if (!this.closed) {
+            try {
+                darling.setAlwaysOnTop(this.darlingWindow, !!enable);
+            } catch (e) {
+                console.error('Failed to set always-on-top:', e);
+                throw e;
+            }
+        }
+    }
+
+    setTitlebarColor(color) {
+        if (!this.closed) {
+            try {
+                darling.setTitlebarColor(this.darlingWindow, color);
+            } catch (e) {
+                console.error('Failed to set titlebar color:', e);
+                throw e;
+            }
+        }
+    }
+
+    setCornerPreference(preference) {
+        if (!this.closed) {
+            try {
+                darling.setCornerPreference(this.darlingWindow, preference);
+            } catch (e) {
+                console.error('Failed to set corner preference:', e);
+                throw e;
+            }
+        }
+    }
+
+    flashWindow(continuous = false) {
+        if (!this.closed) {
+            try {
+                darling.flashWindow(this.darlingWindow, !!continuous);
+            } catch (e) {
+                console.error('Failed to flash window:', e);
+                throw e;
+            }
+        }
+    }
+
+    getDpi() {
+        if (this.closed) return 96;
+        try {
+            return darling.getDpi(this.darlingWindow);
+        } catch (e) {
+            console.error('Failed to get DPI:', e);
+            throw e;
+        }
+    }
+
+    getScaleFactor() {
+        if (this.closed) return 1;
+        try {
+            return darling.getScaleFactor(this.darlingWindow);
+        } catch (e) {
+            console.error('Failed to get scale factor:', e);
+            throw e;
+        }
+    }
+    
+    minimize() {
+        if (!this.closed) {
+            this.browserWindow.minimize();
+        }
+    }
+    
+    maximize() {
+        if (!this.closed) {
+            this.browserWindow.maximize();
+        }
+    }
+    
+    restore() {
+        if (!this.closed) {
+            this.browserWindow.restore();
+        }
+    }
+    
+    // Getters
+    get handle() {
+        return this.darlingWindow;
+    }
+    
+    get isDestroyed() {
+        return this.closed;
+    }
+    
+    get webContents() {
+        return this.browserWindow.webContents;
+    }
+}
+
+/**
+ * Create a Darling window with embedded Electron BrowserWindow
+ * @param {Object} options - Window options
+ * @returns {Promise<DarlingWindowInstance>}
+ */
+export const CreateWindow = async (options = {}) => {
+    // Setup app-level handlers
     if (!windowAllClosedHandlerAttached) {
         windowAllClosedHandlerAttached = true;
-
         app.on('window-all-closed', () => {
             app.quit();
         });
@@ -19,88 +325,103 @@ export const CreateWindow = async (options) => {
         await app.whenReady();
     }
 
+    // Extract and validate options
     const {
         width = 800,
         height = 600,
+        x = undefined,
+        y = undefined,
+        center = false,
         url = 'about:blank',
-        onClose = () => app.quit(),
-        frameRate = 60,
         title = '',
         showIcon = true,
+        frameRate = 60,
         theme = null,
+        
+        // Native styles
         nativeStylesAdd = 0,
         nativeStylesRemove = 0,
         nativeExStylesAdd = 0,
-        nativeExStylesRemove = 0
-    } = options || {};
-
-    let darlingWindowHandle = null;
-    let pollInterval = null;
-
-    // Create the native host window.
-    const dw = darling.createWindow(width, height);
-
-    darling.showDarlingWindow(dw);
-    darlingWindowHandle = dw; // Store for cleanup
-
-    try {
-        darling.setWindowTitle(dw, title);
-    } catch (e) {
-        console.warn('Failed to set window title:', e);
-    }
-
-    try {
-        darling.setWindowIconVisible(dw, !!showIcon)
-    } catch (e) {
-        console.warn('Failed to set window icon visibility:', e);
-    }
-
-    if (theme) {
-        const titlebarTheme = typeof theme === 'string' ? theme : theme.titlebar;
+        nativeExStylesRemove = 0,
         
-        if (titlebarTheme === 'dark' || titlebarTheme === 'light') {
-            try {
-                darling.setDarkMode(dw, titlebarTheme === 'dark');
-            } catch (e) {
-                console.warn('Failed to set titlebar theme:', e);
-            }
-        }
-    }
-
-    // Create the Electron window (embedded as child).
-    const bw = new BrowserWindow({
-        width: width,
-        height: height,
-        show: false,
-        frame: false,
-        webPreferences: {
+        // Electron options
+        webPreferences = {
             nodeIntegration: false,
             contextIsolation: true,
-        }
-    });
+        },
+        
+        // Callbacks
+        onClose = null,
+        onReady = null,
+        onError = null,
+        electron = null,
+    } = options;
 
-    // Embed the Electron window into the native Darling window.
-    const buf = bw.getNativeWindowHandle();
-
-    const eleHWND = BigInt.asUintN(
-        64,
-        buf.readBigUInt64LE(0)
-    );
-
-    const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
-
-    const WS_CHILD = 0x40000000;
-    const WS_POPUP = 0x80000000;
-    const WS_OVERLAPPEDWINDOW = 0x00CF0000;
-    const SWP_NOZORDER = 0x0004;
-    const SWP_FRAMECHANGED = 0x0020;
+    let darlingWindowHandle = null;
+    let browserWindow = null;
+    let instance = null;
 
     try {
+        // Create the native host window
+        darlingWindowHandle = darling.createWindow(width, height);
+        darling.showDarlingWindow(darlingWindowHandle);
+
+        // Set window title
+        if (title) {
+            try {
+                darling.setWindowTitle(darlingWindowHandle, title);
+            } catch (e) {
+                console.warn('Failed to set window title:', e);
+            }
+        }
+
+        // Set icon visibility
+        try {
+            darling.setWindowIconVisible(darlingWindowHandle, !!showIcon);
+        } catch (e) {
+            console.warn('Failed to set window icon visibility:', e);
+        }
+
+        // Apply theme
+        if (theme) {
+            const titlebarTheme = typeof theme === 'string' ? theme : theme.titlebar;
+            
+            if (titlebarTheme === 'dark' || titlebarTheme === 'light') {
+                try {
+                    darling.setDarkMode(darlingWindowHandle, titlebarTheme === 'dark');
+                } catch (e) {
+                    console.warn('Failed to set titlebar theme:', e);
+                }
+            }
+        }
+
+        // Create the Electron BrowserWindow
+        browserWindow = new BrowserWindow({
+            width,
+            height,
+            x,
+            y,
+            show: false,
+            frame: false,
+            webPreferences,
+        });
+
+        // Embed the Electron window into the native Darling window
+        const buf = browserWindow.getNativeWindowHandle();
+        const eleHWND = BigInt.asUintN(64, buf.readBigUInt64LE(0));
+        const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
+
+        const WS_CHILD = 0x40000000;
+        const WS_POPUP = 0x80000000;
+        const WS_OVERLAPPEDWINDOW = 0x00CF0000;
+        const SWP_NOZORDER = 0x0004;
+        const SWP_FRAMECHANGED = 0x0020;
+
         darling.setParent(
             eleHWND,
             darlingHWND
         );
-
+        
         darling.setWindowStyles(
             eleHWND,
             WS_CHILD,
@@ -116,14 +437,13 @@ export const CreateWindow = async (options) => {
             SWP_NOZORDER | SWP_FRAMECHANGED
         );
 
-        darling.setChildWindow(dw, eleHWND);
-    } catch (e) {
-        console.error('Failed to embed Electron window:', e);
-    }
+        darling.setChildWindow(
+            darlingWindowHandle,
+            eleHWND
+        );
 
-    // Apply native window style overrides if provided.
-    if (nativeStylesAdd || nativeStylesRemove) {
-        try {
+        // Apply native window style overrides
+        if (nativeStylesAdd || nativeStylesRemove) {
             darling.setWindowStyles(
                 darlingHWND,
                 nativeStylesAdd,
@@ -138,18 +458,15 @@ export const CreateWindow = async (options) => {
                 height,
                 SWP_NOZORDER | SWP_FRAMECHANGED
             );
-        } catch (e) {
-            console.warn('Failed to apply native styles:', e);
         }
-    }
-    if (nativeExStylesAdd || nativeExStylesRemove) {
-        try {
+        
+        if (nativeExStylesAdd || nativeExStylesRemove) {
             darling.setWindowExStyles(
                 darlingHWND,
                 nativeExStylesAdd,
                 nativeExStylesRemove
             );
-
+            
             darling.setWindowPos(
                 darlingHWND,
                 0,
@@ -158,77 +475,115 @@ export const CreateWindow = async (options) => {
                 height,
                 SWP_NOZORDER | SWP_FRAMECHANGED
             );
-        } catch (e) {
-            console.warn('Failed to apply native ex-styles:', e);
-        }
-    }
-
-    // Load content into the Electron window.
-    bw.loadURL(url)
-        .then(() => bw.show())
-        .catch((e) => console.error('Failed to load URL:', e));
-
-    if (theme && typeof theme === 'object' && theme.content) {
-        const contentTheme = theme.content;
-        if (contentTheme === 'dark' || contentTheme === 'light') {
-            bw.webContents.on('did-finish-load', () => {
-                const scheme = contentTheme === 'dark' ? 'dark' : 'light';
-                bw.webContents.insertCSS(`:root{color-scheme:${scheme};}`);
-            });
-        }
-    }
-
-    /*
-        Set up a message loop poller.
-        This is crucial to keep the native window responsive and processing
-        WM_PAINT and WM_CLOSE messages.
-    */
-
-    pollInterval = setInterval(() => {
-        try {
-            darling.pollEvents();
-        } catch (e) {
-            console.error('Failed polling events:', e);
-
-            if (pollInterval) clearInterval(pollInterval);
-            if (onClose) onClose();
-        }
-    }, 1000 / frameRate);
-
-    // Set up cleanup logic.
-    const cleanup = () => {
-        console.log('Cleaning up Darling Electron Window...');
-
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
         }
 
-        if (darlingWindowHandle) {
+        // Create window instance
+        instance = new DarlingWindowInstance(darlingWindowHandle, browserWindow, options);
+
+        // Call electron callback if provided
+        if (electron && typeof electron === 'function') {
             try {
-                darling.destroyWindow(darlingWindowHandle);
-                darlingWindowHandle = null;
+                electron(browserWindow, instance);
             } catch (e) {
-                console.error('Failed to destroy darling window:', e);
+                console.error('Error in electron callback:', e);
+                if (onError) onError(e);
             }
         }
 
-        // Destroy the embedded BrowserWindow as well
-        if (!bw.isDestroyed()) {
-            bw.destroy();
+        // Apply content theme
+        if (theme && typeof theme === 'object' && theme.content) {
+            const contentTheme = theme.content;
+            if (contentTheme === 'dark' || contentTheme === 'light') {
+                browserWindow.webContents.on('did-finish-load', () => {
+                    const scheme = contentTheme === 'dark' ? 'dark' : 'light';
+                    browserWindow.webContents.insertCSS(`:root{color-scheme:${scheme};}`);
+                });
+            }
         }
+
+        // Load URL
+        await browserWindow.loadURL(url);
+        browserWindow.show();
+        
+        // Center if requested
+        if (center) {
+            browserWindow.center();
+        }
+
+        // Call onReady callback
+        if (onReady && typeof onReady === 'function') {
+            try {
+                onReady(instance);
+            } catch (e) {
+                console.error('Error in onReady callback:', e);
+                if (onError) onError(e);
+            }
+        }
+
+        // Set up message loop poller
+        instance._pollInterval = setInterval(() => {
+            try {
+                darling.pollEvents();
+            } catch (e) {
+                console.error('Failed polling events:', e);
+                instance.close();
+                if (onError) onError(e);
+            }
+        }, 1000 / frameRate);
+
+        // Handle native window close
+        darling.onCloseRequested(() => {
+            console.log('Darling window close requested.');
+            instance.close();
+            if (onClose) onClose();
+        });
+
+        // Handle app quit
+        const cleanupHandler = () => {
+            if (!instance.closed) {
+                instance.close();
+            }
+        };
+        
+        app.on('will-quit', cleanupHandler);
+        
+        // Handle window close event
+        instance.on('close', () => {
+            app.removeListener('will-quit', cleanupHandler);
+            if (onClose) onClose();
+        });
+
+        return instance;
+
+    } catch (error) {
+        console.error('Failed to create Darling window:', error);
+        
+        // Cleanup on error
+        if (darlingWindowHandle) {
+            try {
+                darling.destroyWindow(darlingWindowHandle);
+            } catch (e) {
+                console.error('Failed to cleanup darling window:', e);
+            }
+        }
+        
+        if (browserWindow && !browserWindow.isDestroyed()) {
+            browserWindow.destroy();
+        }
+        
+        if (onError) onError(error);
+        throw error;
     }
+};
 
-    // Ensure cleanup happens when Electron quits.
-    app.on('will-quit', cleanup);
+/**
+ * Get the main Darling window (if any)
+ * @returns {DarlingWindowInstance|null}
+ */
+export const GetMainWindow = () => {
+    // Implementation would require tracking the main window
+    // This is a placeholder
+    return null;
+};
 
-    // Also handle the native window being closed by the user (e.g., Alt+F4).
-    darling.onCloseRequested(() => {
-        console.log('Darling window close requested.');
-
-        cleanup();
-        if (onClose) onClose(); // Use the provided callback
-    });
-
-    return bw;
-}
+export default CreateWindow;

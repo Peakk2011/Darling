@@ -17,6 +17,13 @@ extern "C" {
 
 typedef struct DarlingWindow DarlingWindow;
 
+typedef enum DarlingCornerPreference {
+    DARLING_CORNER_DEFAULT = 0,
+    DARLING_CORNER_NONE = 1,
+    DARLING_CORNER_SMALL = 2,
+    DARLING_CORNER_LARGE = 3
+} DarlingCornerPreference;
+
 // Window Management
 
 // Create a Darling native window. If `parent_hwnd` is non-zero on Windows,
@@ -30,6 +37,9 @@ DARLING_API DarlingWindow* darling_create_window(
 
 // Show a window
 DARLING_API void darling_show_window(DarlingWindow* win);
+
+// Hide a window
+DARLING_API void darling_hide_window(DarlingWindow* win);
 
 // Destroy a window and free its resources
 DARLING_API void darling_destroy_window(DarlingWindow* win);
@@ -47,6 +57,21 @@ DARLING_API void darling_set_window_title(DarlingWindow* win, const wchar_t* tit
 
 // Show or hide the title bar icon (uses default app icon when shown)
 DARLING_API void darling_set_window_icon_visible(DarlingWindow* win, int visible);
+
+// Focus a window (bring to foreground)
+DARLING_API void darling_focus_window(DarlingWindow* win);
+
+// Check visibility (1 = visible, 0 = hidden)
+DARLING_API int darling_is_visible(DarlingWindow* win);
+
+// Check focus state (1 = focused, 0 = not focused)
+DARLING_API int darling_is_focused(DarlingWindow* win);
+
+// Set window opacity (0-255)
+DARLING_API void darling_set_window_opacity(DarlingWindow* win, uint8_t opacity);
+
+// Enable or disable always-on-top
+DARLING_API void darling_set_always_on_top(DarlingWindow* win, int enable);
 
 // Theme Management
 
@@ -67,6 +92,23 @@ DARLING_API void darling_set_titlebar_colors(
     uint32_t bg_color,
     uint32_t text_color
 );
+
+// Set titlebar color only (Windows 11+)
+// Color is RGB format: 0xRRGGBB
+DARLING_API void darling_set_titlebar_color(DarlingWindow* win, uint32_t color);
+
+// Set rounded corner preference (Windows 11+)
+DARLING_API void darling_set_corner_preference(
+    DarlingWindow* win,
+    DarlingCornerPreference pref
+);
+
+// Flash the window (continuous = 1 for continuous flashing)
+DARLING_API void darling_flash_window(DarlingWindow* win, int continuous);
+
+// DPI helpers
+DARLING_API uint32_t darling_get_dpi(DarlingWindow* win);
+DARLING_API float darling_get_scale_factor(DarlingWindow* win);
 
 // Rendering
 

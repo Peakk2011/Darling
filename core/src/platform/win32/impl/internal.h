@@ -24,6 +24,10 @@
 #define DWMWA_TEXT_COLOR 36
 #endif
 
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
 // Types
 
 typedef struct DarlingWindow {

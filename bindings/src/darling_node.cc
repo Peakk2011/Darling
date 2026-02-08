@@ -14,13 +14,14 @@ using namespace Napi;
 
 static ThreadSafeFunction tsfn_on_close;
 
+// C-side close callback trampoline.
 static void c_callback_on_close() {
     if (tsfn_on_close) {
         tsfn_on_close.BlockingCall();
     }
 }
 
-// Function exposed to JS to set the close callback.
+// Bind a JS close callback through a ThreadSafeFunction.
 Napi::Value SetOnCloseCallback(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (!info[0].IsFunction()) {
@@ -42,6 +43,7 @@ Napi::Value SetOnCloseCallback(const Napi::CallbackInfo& info) {
 }
 
 
+// Convert JS Number/BigInt to uint64.
 static uint64_t value_to_u64(const Napi::Value& v) {
     if (v.IsBigInt()) {
         bool lossless = false;
@@ -53,6 +55,7 @@ static uint64_t value_to_u64(const Napi::Value& v) {
     return 0;
 }
 
+// Create a native Darling window.
 Napi::Value CreateDarlingWindow(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint32_t w = info[0].As<Napi::Number>().Uint32Value();
@@ -66,7 +69,7 @@ Napi::Value CreateDarlingWindow(const Napi::CallbackInfo& info) {
     return Napi::External<DarlingWindow>::New(env, win);
 }
 
-// Allow JS to explicitly destroy the window after cleanup.
+// Destroy the window and release resources.
 void DestroyDarlingWindow(const Napi::CallbackInfo& info) {
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
     darling_destroy_window(win);
@@ -77,12 +80,44 @@ void DestroyDarlingWindow(const Napi::CallbackInfo& info) {
     }
 }
 
+// Show a Darling window.
 Napi::Value ShowWindowWrapped(const Napi::CallbackInfo& info) {
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
     darling_show_window(win);
     return info.Env().Undefined();
 }
 
+// Hide a Darling window.
+Napi::Value HideWindowWrapped(const Napi::CallbackInfo& info) {
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    darling_hide_window(win);
+    return info.Env().Undefined();
+}
+
+// Focus a Darling window.
+Napi::Value FocusWindowWrapped(const Napi::CallbackInfo& info) {
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    darling_focus_window(win);
+    return info.Env().Undefined();
+}
+
+// Check if a Darling window is visible.
+Napi::Value IsVisibleWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    int visible = darling_is_visible(win);
+    return Napi::Boolean::New(env, visible ? true : false);
+}
+
+// Check if a Darling window is focused.
+Napi::Value IsFocusedWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    int focused = darling_is_focused(win);
+    return Napi::Boolean::New(env, focused ? true : false);
+}
+
+// Set child HWND used for resize parenting.
 Napi::Value SetChildWindowWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -91,6 +126,7 @@ Napi::Value SetChildWindowWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Set the Win32 window title.
 Napi::Value SetWindowTitleWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -99,6 +135,7 @@ Napi::Value SetWindowTitleWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Show or hide the titlebar icon.
 Napi::Value SetWindowIconVisibleWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -107,17 +144,41 @@ Napi::Value SetWindowIconVisibleWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Set window opacity (0-255).
+Napi::Value SetWindowOpacityWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint32_t opacity = info[1].As<Napi::Number>().Uint32Value();
+    if (opacity > 255) {
+        opacity = 255;
+    }
+    darling_set_window_opacity(win, (uint8_t)opacity);
+    return env.Undefined();
+}
+
+// Toggle always-on-top for the window.
+Napi::Value SetAlwaysOnTopWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    bool enable = info[1].As<Napi::Boolean>().Value();
+    darling_set_always_on_top(win, enable ? 1 : 0);
+    return env.Undefined();
+}
+
+// Process pending Win32 messages.
 Napi::Value PollEvents(const Napi::CallbackInfo& info) {
     darling_poll_events();
     return info.Env().Undefined();
 }
 
+// Get HWND of the main Darling window.
 Napi::Value GetHWND(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uintptr_t h = darling_get_main_hwnd();
     return Napi::BigInt::New(env, (uint64_t)h);
 }
 
+// Set a raw HWND parent (Win32 SetParent).
 Napi::Value SetParentWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint64_t child = value_to_u64(info[0]);
@@ -130,6 +191,7 @@ Napi::Value SetParentWrapped(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Update GWL_STYLE bits on an HWND.
 Napi::Value SetWindowStylesWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint64_t hwnd_v = value_to_u64(info[0]);
@@ -146,6 +208,7 @@ Napi::Value SetWindowStylesWrapped(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Update GWL_EXSTYLE bits on an HWND.
 Napi::Value SetWindowExStylesWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -164,12 +227,14 @@ Napi::Value SetWindowExStylesWrapped(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Query system dark mode.
 Napi::Value IsDarkModeWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     int isDark = darling_is_dark_mode();
     return Napi::Boolean::New(env, isDark ? true : false);
 }
 
+// Set dark mode on a Darling window.
 Napi::Value SetDarkModeWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -178,6 +243,7 @@ Napi::Value SetDarkModeWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Apply system theme to a Darling window.
 Napi::Value SetAutoDarkModeWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -185,6 +251,7 @@ Napi::Value SetAutoDarkModeWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Set titlebar background and text colors.
 Napi::Value SetTitlebarColorsWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
@@ -194,6 +261,50 @@ Napi::Value SetTitlebarColorsWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Set titlebar background color only.
+Napi::Value SetTitlebarColorWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint32_t color = info[1].As<Napi::Number>().Uint32Value();
+    darling_set_titlebar_color(win, color);
+    return env.Undefined();
+}
+
+// Set rounded corner preference (Win11+).
+Napi::Value SetCornerPreferenceWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    int pref = info[1].As<Napi::Number>().Int32Value();
+    darling_set_corner_preference(win, (DarlingCornerPreference)pref);
+    return env.Undefined();
+}
+
+// Flash the window/taskbar.
+Napi::Value FlashWindowWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    bool continuous = info[1].As<Napi::Boolean>().Value();
+    darling_flash_window(win, continuous ? 1 : 0);
+    return env.Undefined();
+}
+
+// Get window DPI (fallback to 96 if unsupported).
+Napi::Value GetDpiWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint32_t dpi = darling_get_dpi(win);
+    return Napi::Number::New(env, dpi);
+}
+
+// Get DPI scale factor (dpi / 96).
+Napi::Value GetScaleFactorWrapped(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    float scale = darling_get_scale_factor(win);
+    return Napi::Number::New(env, scale);
+}
+
+// Call SetWindowPos on a raw HWND.
 Napi::Value SetWindowPosWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint64_t hwnd_v = value_to_u64(info[0]);
@@ -210,6 +321,7 @@ Napi::Value SetWindowPosWrapped(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Call ShowWindow on a raw HWND.
 Napi::Value ShowWindowWrappedHWND(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     uint64_t hwnd_v = value_to_u64(info[0]);
@@ -222,6 +334,7 @@ Napi::Value ShowWindowWrappedHWND(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Paint a BGRA buffer to the main Darling window.
 Napi::Value PaintFrameWrapped(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (!info[0].IsBuffer()) {
@@ -237,14 +350,21 @@ Napi::Value PaintFrameWrapped(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Export all native bindings.
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("createWindow", Napi::Function::New(env, CreateDarlingWindow));
     exports.Set("destroyWindow", Napi::Function::New(env, DestroyDarlingWindow));
     exports.Set("onCloseRequested", Napi::Function::New(env, SetOnCloseCallback));
     exports.Set("showDarlingWindow", Napi::Function::New(env, ShowWindowWrapped));
+    exports.Set("hideDarlingWindow", Napi::Function::New(env, HideWindowWrapped));
+    exports.Set("focusDarlingWindow", Napi::Function::New(env, FocusWindowWrapped));
+    exports.Set("isVisible", Napi::Function::New(env, IsVisibleWrapped));
+    exports.Set("isFocused", Napi::Function::New(env, IsFocusedWrapped));
     exports.Set("setChildWindow", Napi::Function::New(env, SetChildWindowWrapped));
     exports.Set("setWindowTitle", Napi::Function::New(env, SetWindowTitleWrapped));
     exports.Set("setWindowIconVisible", Napi::Function::New(env, SetWindowIconVisibleWrapped));
+    exports.Set("setWindowOpacity", Napi::Function::New(env, SetWindowOpacityWrapped));
+    exports.Set("setAlwaysOnTop", Napi::Function::New(env, SetAlwaysOnTopWrapped));
     exports.Set("pollEvents", Napi::Function::New(env, PollEvents));
     exports.Set("getHWND", Napi::Function::New(env, GetHWND));
     exports.Set("paintFrame", Napi::Function::New(env, PaintFrameWrapped));
@@ -257,6 +377,11 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setDarkMode", Napi::Function::New(env, SetDarkModeWrapped));
     exports.Set("setAutoDarkMode", Napi::Function::New(env, SetAutoDarkModeWrapped));
     exports.Set("setTitlebarColors", Napi::Function::New(env, SetTitlebarColorsWrapped));
+    exports.Set("setTitlebarColor", Napi::Function::New(env, SetTitlebarColorWrapped));
+    exports.Set("setCornerPreference", Napi::Function::New(env, SetCornerPreferenceWrapped));
+    exports.Set("flashWindow", Napi::Function::New(env, FlashWindowWrapped));
+    exports.Set("getDpi", Napi::Function::New(env, GetDpiWrapped));
+    exports.Set("getScaleFactor", Napi::Function::New(env, GetScaleFactorWrapped));
     return exports;
 }
 

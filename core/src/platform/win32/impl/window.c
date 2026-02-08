@@ -292,6 +292,37 @@ void darling_show_window(DarlingWindow* win) {
     }
 }
 
+void darling_hide_window(DarlingWindow* win) {
+    if (win && win->hwnd) {
+        ShowWindow(win->hwnd, SW_HIDE);
+    }
+}
+
+void darling_focus_window(DarlingWindow* win) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    SetForegroundWindow(win->hwnd);
+    SetFocus(win->hwnd);
+}
+
+int darling_is_visible(DarlingWindow* win) {
+    if (!win || !win->hwnd) {
+        return 0;
+    }
+
+    return IsWindowVisible(win->hwnd) ? 1 : 0;
+}
+
+int darling_is_focused(DarlingWindow* win) {
+    if (!win || !win->hwnd) {
+        return 0;
+    }
+
+    return GetForegroundWindow() == win->hwnd ? 1 : 0;
+}
+
 void darling_destroy_window(DarlingWindow* win) {
     if (!win) {
         return;
@@ -341,7 +372,6 @@ void darling_set_window_icon_visible(DarlingWindow* win, int visible) {
     
     darling_lock();
     
-    // ทำลาย icon เก่า
     if (win->customIcon) {
         DestroyIcon(win->customIcon);
         win->customIcon = NULL;
@@ -389,6 +419,43 @@ void darling_set_window_icon_visible(DarlingWindow* win, int visible) {
     }
     
     darling_unlock();
+}
+
+void darling_set_window_opacity(DarlingWindow* win, uint8_t opacity) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    LONG exStyle = GetWindowLongW(win->hwnd, GWL_EXSTYLE);
+
+    if (opacity < 255) {
+        if ((exStyle & WS_EX_LAYERED) == 0) {
+            SetWindowLongW(win->hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
+        }
+
+        SetLayeredWindowAttributes(win->hwnd, 0, opacity, LWA_ALPHA);
+    } else {
+        if (exStyle & WS_EX_LAYERED) {
+            SetWindowLongW(win->hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_LAYERED);
+        }
+    }
+}
+
+void darling_set_always_on_top(DarlingWindow* win, int enable) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    HWND insertAfter = enable ? HWND_TOPMOST : HWND_NOTOPMOST;
+    SetWindowPos(
+        win->hwnd,
+        insertAfter,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    );
 }
 
 void darling_cleanup_window_icon(DarlingWindow* win) {
@@ -489,6 +556,92 @@ void darling_set_titlebar_colors(DarlingWindow* win, uint32_t bg_color, uint32_t
     );
     
     RedrawWindow(win->hwnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+}
+
+void darling_set_titlebar_color(DarlingWindow* win, uint32_t color) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    COLORREF titlebarColor = RGB(
+        (color >> 16) & 0xFF,
+        (color >> 8) & 0xFF,
+        color & 0xFF
+    );
+
+    DwmSetWindowAttribute(
+        win->hwnd,
+        DWMWA_CAPTION_COLOR,
+        &titlebarColor,
+        sizeof(titlebarColor)
+    );
+
+    SetWindowPos(
+        win->hwnd,
+        NULL,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+    );
+
+    RedrawWindow(win->hwnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+}
+
+void darling_set_corner_preference(DarlingWindow* win, DarlingCornerPreference pref) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    int cornerPref = (int)pref;
+    DwmSetWindowAttribute(
+        win->hwnd,
+        DWMWA_WINDOW_CORNER_PREFERENCE,
+        &cornerPref,
+        sizeof(cornerPref)
+    );
+}
+
+void darling_flash_window(DarlingWindow* win, int continuous) {
+    if (!win || !win->hwnd) {
+        return;
+    }
+
+    FLASHWINFO fwi = {0};
+    fwi.cbSize = sizeof(FLASHWINFO);
+    fwi.hwnd = win->hwnd;
+    fwi.dwFlags = FLASHW_ALL | (continuous ? FLASHW_TIMER : 0);
+    fwi.uCount = continuous ? 0 : 3;
+    fwi.dwTimeout = 0;
+
+    FlashWindowEx(&fwi);
+}
+
+uint32_t darling_get_dpi(DarlingWindow* win) {
+    if (!win || !win->hwnd) {
+        return 96;
+    }
+
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32) {
+        return 96;
+    }
+
+    typedef UINT (WINAPI *DarlingGetDpiForWindowFn)(HWND);
+    DarlingGetDpiForWindowFn getDpiForWindow =
+        (DarlingGetDpiForWindowFn)GetProcAddress(user32, "GetDpiForWindow");
+
+    if (!getDpiForWindow) {
+        return 96;
+    }
+
+    return (uint32_t)getDpiForWindow(win->hwnd);
+}
+
+float darling_get_scale_factor(DarlingWindow* win) {
+    uint32_t dpi = darling_get_dpi(win);
+    return (float)dpi / 96.0f;
 }
 
 // Public API - Event Loop
