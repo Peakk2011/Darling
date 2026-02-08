@@ -4,7 +4,14 @@
   "exports": {
     ".": "./js/index.mjs"
   },
+  "scripts": {
+    "ts:usage": "set NODE_OPTIONS=--import tsx&& npx electron --experimentalFeatures ./ts/examples/usage.ts"
+  },
   "devDependencies": {
-    "electron": "^39.2.7"
+    "@types/node": "^22.10.2",
+    "electron": "^39.2.7",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
   }
 }
