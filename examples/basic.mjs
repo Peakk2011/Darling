@@ -4,9 +4,9 @@ const darlingWindow = async () => {
     // Create a window
     const win = await CreateWindow({
         width: 640,
-        height: 480,
-        url: 'https://github.com/Peakk2011/',
-        title: 'Peakk2011',
+        height: 640,
+        url: 'https://webpeakkofficial.web.app/',
+        title: 'Peakk',
         showIcon: false,
 
         onReady: () => {

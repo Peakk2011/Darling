@@ -228,8 +228,11 @@ DarlingWindow* darling_create_window(uint32_t w, uint32_t h, uintptr_t parent_hw
         win->isChild = TRUE;
     } else {
         // Top-level window
-        createStyles = WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+        createStyles =
+            WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME |
+            WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
         win->isChild = FALSE;
+        exStyle = WS_EX_DLGMODALFRAME;
         
         // Adjust for window decorations
         RECT rect = {0, 0, (LONG)w, (LONG)h};
@@ -371,51 +374,33 @@ void darling_set_window_icon_visible(DarlingWindow* win, int visible) {
     }
     
     darling_lock();
-    
-    if (win->customIcon) {
-        DestroyIcon(win->customIcon);
-        win->customIcon = NULL;
-    }
-    
-    HICON icon = NULL;
-    
-    if (visible) {
-        // System icon
-        icon = (HICON)LoadImageW(
-            NULL,
-            MAKEINTRESOURCEW(IDI_APPLICATION),
-            IMAGE_ICON,
-            0, 0,
-            LR_DEFAULTSIZE | LR_SHARED
-        );
-    } else {
-        // Transparent icon 1x1
-        BYTE andMask[4] = {0xFF, 0xFF, 0xFF, 0xFF};
-        BYTE xorMask[4] = {0x00, 0x00, 0x00, 0x00};
-        
-        icon = CreateIcon(
-            GetModuleHandleW(NULL),
-            1, 1, 1, 1,
-            andMask,
-            xorMask
-        );
-        
-        if (icon) {
-            win->customIcon = icon;
+
+    if (!win->isChild) {
+        LONG exStyle = GetWindowLongW(win->hwnd, GWL_EXSTYLE);
+        LONG style = GetWindowLongW(win->hwnd, GWL_STYLE);
+
+        if (visible) {
+            // แสดง icon - ลบ WS_EX_DLGMODALFRAME
+            exStyle &= ~WS_EX_DLGMODALFRAME;
+            style &= ~(WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME);
+            style |= WS_OVERLAPPEDWINDOW;
         } else {
-            darling_log_last_error(L"CreateIcon");
+            // ซ่อน icon - เพิ่ม WS_EX_DLGMODALFRAME
+            exStyle |= WS_EX_DLGMODALFRAME;
+            style &= ~WS_OVERLAPPEDWINDOW;
+            style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
         }
-    }
-    
-    if (icon) {
-        SendMessageW(win->hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
-        SendMessageW(win->hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+
+        SetWindowLongW(win->hwnd, GWL_EXSTYLE, exStyle);
+        SetWindowLongW(win->hwnd, GWL_STYLE, style);
         
         SetWindowPos(
             win->hwnd, NULL, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | 
             SWP_NOACTIVATE | SWP_FRAMECHANGED
         );
+        
+        RedrawWindow(win->hwnd, NULL, NULL, RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
     }
     
     darling_unlock();
