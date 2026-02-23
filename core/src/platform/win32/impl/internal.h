@@ -49,7 +49,7 @@ typedef struct DarlingWindow {
     struct DarlingWindow* next;
 } DarlingWindow;
 
-// Global State (defined in window.c)
+// Global State (defined in window/core/window_core.c)
 
 extern DarlingWindow* g_main_window;
 extern DarlingWindow* g_window_head;
@@ -75,6 +75,7 @@ BOOL darling_is_system_dark_mode(void);
 
 // GDI Resource Management (paint.c)
 void darling_free_gdi(DarlingWindow* win);
+void darling_handle_paint(DarlingWindow* win, HWND hwnd);
 
 // Window List Management (list.c)
 void darling_list_add(DarlingWindow* win);
@@ -82,12 +83,13 @@ void darling_list_remove(DarlingWindow* win);
 DarlingWindow* darling_select_new_main_window(void);
 void darling_update_main_on_remove(DarlingWindow* removed);
 
-// Window Procedure (window.c)
+// Window Procedure (window/core/window_core.c)
 LRESULT CALLBACK darling_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 BOOL darling_register_class(void);
 
+// Window Appearance (window/appearance/window_appearance.c)
 void darling_set_window_icon_visible(DarlingWindow* win, int visible);
 void darling_cleanup_window_icon(DarlingWindow* win);
 
-// Theme Application (window.c)
+// Theme Application (window/theme/window_theme.c)
 void darling_apply_dark_mode_internal(DarlingWindow* win, BOOL enable);
