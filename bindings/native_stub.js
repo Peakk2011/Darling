@@ -3,6 +3,12 @@ module.exports = {
     getHWND() {
         throw new Error('native addon not built — getHWND() not available')
     },
+    getWindowHWND() {
+        throw new Error('native addon not built — getWindowHWND() not available')
+    },
+    onCloseRequestedForWindow() {
+        throw new Error('native addon not built — onCloseRequestedForWindow() not available')
+    },
     setParent() {
         throw new Error('native addon not built — setParent() not available')
     },

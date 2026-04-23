@@ -46,6 +46,7 @@ export interface DarlingWindowInstance extends EventEmitter {
     readonly darlingWindow: any;
     readonly browserWindow: BrowserWindow;
     readonly handle: any;
+    readonly hwnd: bigint;
     readonly closed: boolean;
     readonly isDestroyed: boolean;
     readonly webContents: Electron.WebContents;

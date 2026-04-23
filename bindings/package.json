@@ -4,6 +4,6 @@
   "type": "module",
   "gypfile": true,
   "dependencies": {
-    "node-addon-api": "^8.0.0"
+    "node-addon-api": "^8.7.0"
   }
 }

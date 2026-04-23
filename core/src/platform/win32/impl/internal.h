@@ -54,6 +54,7 @@ typedef struct DarlingWindow {
 extern DarlingWindow* g_main_window;
 extern DarlingWindow* g_window_head;
 extern void (*g_close_callback)(void);
+extern DarlingCloseCallbackHWND g_close_callback_hwnd;
 extern BOOL g_class_registered;
 extern CRITICAL_SECTION g_lock;
 extern BOOL g_lock_initialized;

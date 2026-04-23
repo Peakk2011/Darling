@@ -89,16 +89,48 @@ uintptr_t darling_get_main_hwnd(void) {
     return (uintptr_t)g_main_window->hwnd;
 }
 
+uintptr_t darling_get_window_hwnd(DarlingWindow* win) {
+    if (!win || !win->hwnd) {
+        return (uintptr_t)0;
+    }
+
+    return (uintptr_t)win->hwnd;
+}
+
 void darling_set_close_callback(void (*callback)(void)) {
     g_close_callback = callback;
+}
+
+void darling_set_close_callback_hwnd(DarlingCloseCallbackHWND callback) {
+    g_close_callback_hwnd = callback;
 }
 
 void darling_poll_events(void) {
     MSG msg;
 
     while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        if (msg.message == WM_QUIT) {
+            PostQuitMessage((int)msg.wParam);
+            break;
+        }
+
+        // dispatch HWND in Darling window list
+        BOOL isDarlingMsg = FALSE;
+        darling_lock();
+        DarlingWindow* cur = g_window_head;
+        while (cur) {
+            if (cur->hwnd == msg.hwnd || cur->childHwnd == msg.hwnd) {
+                isDarlingMsg = TRUE;
+                break;
+            }
+            cur = cur->next;
+        }
+        darling_unlock();
+
+        if (isDarlingMsg || msg.hwnd == NULL) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
     }
 }
 

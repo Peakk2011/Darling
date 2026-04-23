@@ -16,6 +16,7 @@ extern "C" {
 #endif
 
 typedef struct DarlingWindow DarlingWindow;
+typedef void (*DarlingCloseCallbackHWND)(uintptr_t hwnd);
 
 typedef enum DarlingCornerPreference {
     DARLING_CORNER_DEFAULT = 0,
@@ -46,6 +47,9 @@ DARLING_API void darling_destroy_window(DarlingWindow* win);
 
 // Return the HWND of the main Darling window (0 if none)
 DARLING_API uintptr_t darling_get_main_hwnd(void);
+
+// Return the HWND of a specific Darling window (0 if invalid)
+DARLING_API uintptr_t darling_get_window_hwnd(DarlingWindow* win);
 
 // Window Properties
 
@@ -134,6 +138,9 @@ DARLING_API void darling_poll_events(void);
 
 // Set a callback to be invoked when the main window receives WM_CLOSE
 DARLING_API void darling_set_close_callback(void (*callback)());
+
+// Set a callback invoked with the closing window HWND on WM_CLOSE
+DARLING_API void darling_set_close_callback_hwnd(DarlingCloseCallbackHWND callback);
 
 // Initialization
 

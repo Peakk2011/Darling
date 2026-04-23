@@ -13,6 +13,12 @@ try {
       getHWND: () => {
         throw new Error("Darling native addon not loaded");
       },
+      getWindowHWND: () => {
+        throw new Error("Darling native addon not loaded");
+      },
+      onCloseRequestedForWindow: () => {
+        throw new Error("Darling native addon not loaded");
+      },
       setParent: () => {
         throw new Error("Darling native addon not loaded");
       },
@@ -68,6 +74,8 @@ try {
 export const createWindow = (...args: any[]) => native.createWindow(...args);
 export const destroyWindow = (win: any) => native.destroyWindow(win);
 export const onCloseRequested = (cb: () => void) => native.onCloseRequested(cb);
+export const onCloseRequestedForWindow = (win: any, cb: () => void) =>
+  native.onCloseRequestedForWindow(win, cb);
 export const showDarlingWindow = (win: any) => native.showDarlingWindow(win);
 export const hideDarlingWindow = (win: any) => native.hideDarlingWindow(win);
 export const focusDarlingWindow = (win: any) => native.focusDarlingWindow(win);
@@ -83,6 +91,7 @@ export const setAlwaysOnTop = (win: any, enable: boolean) =>
   native.setAlwaysOnTop(win, enable);
 export const pollEvents = () => native.pollEvents();
 export const getHWND = () => native.getHWND();
+export const getWindowHWND = (win: any) => native.getWindowHWND(win);
 export const paintFrame = (buffer: Buffer, w: number, h: number) =>
   native.paintFrame(buffer, w, h);
 export const setParent = (child: any, parent: any) =>

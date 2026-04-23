@@ -10,6 +10,8 @@ try {
     } catch (e) {
         native = {
             getHWND: () => { throw new Error('Darling native addon not loaded') },
+            getWindowHWND: () => { throw new Error('Darling native addon not loaded') },
+            onCloseRequestedForWindow: () => { throw new Error('Darling native addon not loaded') },
             setParent: () => { throw new Error('Darling native addon not loaded') },
             setWindowStyles: () => { throw new Error('Darling native addon not loaded') },
             setWindowPos: () => { throw new Error('Darling native addon not loaded') },
@@ -34,6 +36,7 @@ module.exports = {
     createWindow: (...args) => native.createWindow(...args),
     destroyWindow: (win) => native.destroyWindow(win),
     onCloseRequested: (cb) => native.onCloseRequested(cb),
+    onCloseRequestedForWindow: (win, cb) => native.onCloseRequestedForWindow(win, cb),
     showDarlingWindow: (win) => native.showDarlingWindow(win),
     hideDarlingWindow: (win) => native.hideDarlingWindow(win),
     focusDarlingWindow: (win) => native.focusDarlingWindow(win),
@@ -44,6 +47,7 @@ module.exports = {
     setAlwaysOnTop: (win, enable) => native.setAlwaysOnTop(win, enable),
     pollEvents: () => native.pollEvents(),
     getHWND: () => native.getHWND(),
+    getWindowHWND: (win) => native.getWindowHWND(win),
     paintFrame: (buffer, w, h) => native.paintFrame(buffer, w, h),
     setParent: (child, parent) => native.setParent(child, parent),
     setWindowStyles: (hwnd, add, remove) => native.setWindowStyles(hwnd, add, remove),

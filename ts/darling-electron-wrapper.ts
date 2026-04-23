@@ -14,15 +14,22 @@ let windowAllClosedHandlerAttached = false;
  */
 class DarlingWindowInstance extends EventEmitter {
   darlingWindow: any;
+  darlingHWND: bigint;
   browserWindow: BrowserWindow;
   options: any;
   closed: boolean;
   _pollInterval: NodeJS.Timeout | null;
 
-  constructor(darlingWindow: any, browserWindow: BrowserWindow, options: any) {
+  constructor(
+    darlingWindow: any,
+    darlingHWND: bigint,
+    browserWindow: BrowserWindow,
+    options: any,
+  ) {
     super();
 
     this.darlingWindow = darlingWindow;
+    this.darlingHWND = darlingHWND;
     this.browserWindow = browserWindow;
     this.options = options;
     this.closed = false;
@@ -104,12 +111,11 @@ class DarlingWindowInstance extends EventEmitter {
       this.browserWindow.setSize(width, height);
 
       try {
-        const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
         const SWP_NOZORDER = 0x0004;
         const SWP_FRAMECHANGED = 0x0020;
 
         darling.setWindowPos(
-          darlingHWND,
+          this.darlingHWND,
           0,
           0,
           width,
@@ -307,6 +313,10 @@ class DarlingWindowInstance extends EventEmitter {
     return this.darlingWindow;
   }
 
+  get hwnd() {
+    return this.darlingHWND;
+  }
+
   get isDestroyed() {
     return this.closed;
   }
@@ -365,6 +375,7 @@ export const CreateWindow = async (options: any = {}) => {
   } = options;
 
   let darlingWindowHandle: any = null;
+  let darlingHWND: bigint = 0n;
   let browserWindow: BrowserWindow | null = null;
   let instance: DarlingWindowInstance | null = null;
 
@@ -372,6 +383,7 @@ export const CreateWindow = async (options: any = {}) => {
     // Create the native host window
     darlingWindowHandle = darling.createWindow(width, height);
     darling.showDarlingWindow(darlingWindowHandle);
+    darlingHWND = BigInt.asUintN(64, BigInt(darling.getWindowHWND(darlingWindowHandle)));
 
     // Set window title
     if (title) {
@@ -416,7 +428,6 @@ export const CreateWindow = async (options: any = {}) => {
     // Embed the Electron window into the native Darling window
     const buf = browserWindow.getNativeWindowHandle();
     const eleHWND = BigInt.asUintN(64, buf.readBigUInt64LE(0));
-    const darlingHWND = BigInt.asUintN(64, BigInt(darling.getHWND()));
 
     const WS_CHILD = 0x40000000;
     const WS_POPUP = 0x80000000;
@@ -468,6 +479,7 @@ export const CreateWindow = async (options: any = {}) => {
     // Create window instance
     instance = new DarlingWindowInstance(
       darlingWindowHandle,
+      darlingHWND,
       browserWindow,
       options,
     );
@@ -524,10 +536,9 @@ export const CreateWindow = async (options: any = {}) => {
     }, 1000 / frameRate);
 
     // Handle native window close
-    darling.onCloseRequested(() => {
+    darling.onCloseRequestedForWindow(darlingWindowHandle, () => {
       console.log("Darling window close requested.");
       instance?.close();
-      if (onClose) onClose();
     });
 
     // Handle app quit

@@ -8,16 +8,44 @@
 #endif
 #include <windows.h>
 #endif
+#include <mutex>
+#include <unordered_map>
 #include "darling.h"
 
 using namespace Napi;
 
 static ThreadSafeFunction tsfn_on_close;
+static std::unordered_map<uint64_t, ThreadSafeFunction> tsfn_on_close_by_hwnd;
+static std::mutex g_close_callbacks_mutex;
+static bool g_close_hook_registered = false;
 
-// C-side close callback trampoline.
 static void c_callback_on_close() {
     if (tsfn_on_close) {
         tsfn_on_close.BlockingCall();
+    }
+}
+
+// C-side close callback trampoline.
+static void c_callback_on_close_hwnd(uintptr_t hwnd) {
+    ThreadSafeFunction hwnd_tsfn;
+
+    {
+        std::lock_guard<std::mutex> lock(g_close_callbacks_mutex);
+        auto it = tsfn_on_close_by_hwnd.find((uint64_t)hwnd);
+        if (it != tsfn_on_close_by_hwnd.end()) {
+            hwnd_tsfn = it->second;
+        }
+    }
+
+    if (hwnd_tsfn) {
+        hwnd_tsfn.BlockingCall();
+    }
+}
+
+static void ensure_close_hook_registered() {
+    if (!g_close_hook_registered) {
+        darling_set_close_callback_hwnd(c_callback_on_close_hwnd);
+        g_close_hook_registered = true;
     }
 }
 
@@ -29,6 +57,10 @@ Napi::Value SetOnCloseCallback(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
+    if (tsfn_on_close) {
+        tsfn_on_close.Release();
+    }
+
     tsfn_on_close = ThreadSafeFunction::New(
         env,
         info[0].As<Function>(),     // JS function to call
@@ -37,8 +69,9 @@ Napi::Value SetOnCloseCallback(const Napi::CallbackInfo& info) {
         1                           // Initial thread count
     );
 
-    // Register our C-function intermediary.
+    // Register legacy callback and ensure HWND callback is also active.
     darling_set_close_callback(c_callback_on_close);
+    ensure_close_hook_registered();
     return env.Undefined();
 }
 
@@ -69,15 +102,74 @@ Napi::Value CreateDarlingWindow(const Napi::CallbackInfo& info) {
     return Napi::External<DarlingWindow>::New(env, win);
 }
 
+Napi::Value GetWindowHWND(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsExternal()) {
+        Napi::TypeError::New(env, "Expected a Darling window handle").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uintptr_t hwnd = darling_get_window_hwnd(win);
+    return Napi::BigInt::New(env, (uint64_t)hwnd);
+}
+
+Napi::Value SetOnCloseCallbackForWindow(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsExternal()) {
+        Napi::TypeError::New(env, "Expected window handle and callback").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if (!info[1].IsFunction()) {
+        Napi::TypeError::New(env, "Expected a function for the callback").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint64_t hwnd = (uint64_t)darling_get_window_hwnd(win);
+    if (hwnd == 0) {
+        Napi::TypeError::New(env, "Invalid window handle").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    ThreadSafeFunction tsfn = ThreadSafeFunction::New(
+        env,
+        info[1].As<Function>(),
+        "DarlingOnCloseByWindow",
+        0,
+        1
+    );
+
+    {
+        std::lock_guard<std::mutex> lock(g_close_callbacks_mutex);
+        auto it = tsfn_on_close_by_hwnd.find(hwnd);
+        if (it != tsfn_on_close_by_hwnd.end() && it->second) {
+            it->second.Release();
+        }
+        tsfn_on_close_by_hwnd[hwnd] = tsfn;
+    }
+
+    ensure_close_hook_registered();
+    return env.Undefined();
+}
+
 // Destroy the window and release resources.
 void DestroyDarlingWindow(const Napi::CallbackInfo& info) {
     auto win = info[0].As<Napi::External<DarlingWindow>>().Data();
+    uint64_t hwnd = (uint64_t)darling_get_window_hwnd(win);
     darling_destroy_window(win);
 
-    // Release the thread-safe function so the process can exit.
-    if (tsfn_on_close) {
-        tsfn_on_close.Release();
+    if (hwnd != 0) {
+        std::lock_guard<std::mutex> lock(g_close_callbacks_mutex);
+        auto it = tsfn_on_close_by_hwnd.find(hwnd);
+        if (it != tsfn_on_close_by_hwnd.end()) {
+            if (it->second) {
+                it->second.Release();
+            }
+            tsfn_on_close_by_hwnd.erase(it);
+        }
     }
+
 }
 
 // Show a Darling window.
@@ -355,6 +447,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("createWindow", Napi::Function::New(env, CreateDarlingWindow));
     exports.Set("destroyWindow", Napi::Function::New(env, DestroyDarlingWindow));
     exports.Set("onCloseRequested", Napi::Function::New(env, SetOnCloseCallback));
+    exports.Set("onCloseRequestedForWindow", Napi::Function::New(env, SetOnCloseCallbackForWindow));
     exports.Set("showDarlingWindow", Napi::Function::New(env, ShowWindowWrapped));
     exports.Set("hideDarlingWindow", Napi::Function::New(env, HideWindowWrapped));
     exports.Set("focusDarlingWindow", Napi::Function::New(env, FocusWindowWrapped));
@@ -367,6 +460,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setAlwaysOnTop", Napi::Function::New(env, SetAlwaysOnTopWrapped));
     exports.Set("pollEvents", Napi::Function::New(env, PollEvents));
     exports.Set("getHWND", Napi::Function::New(env, GetHWND));
+    exports.Set("getWindowHWND", Napi::Function::New(env, GetWindowHWND));
     exports.Set("paintFrame", Napi::Function::New(env, PaintFrameWrapped));
     exports.Set("setParent", Napi::Function::New(env, SetParentWrapped));
     exports.Set("setWindowStyles", Napi::Function::New(env, SetWindowStylesWrapped));
